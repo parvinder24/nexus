@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Nexus — Career Intelligence</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <section id="auth-screen" class="auth-screen">
+    <div class="auth-card">
+      <h1 class="wordmark">Nexus</h1>
+      <p class="tagline">Scrape it. Structure it. Match it. Ask it.</p>
+
+      <form id="auth-form">
+        <label>Email
+          <input type="email" id="auth-email" required autocomplete="email" />
+        </label>
+        <label>Password
+          <input type="password" id="auth-password" required minlength="8" autocomplete="current-password" />
+        </label>
+        <button type="submit" id="auth-submit">Log in</button>
+      </form>
+      <p class="auth-toggle">
+        <span id="auth-toggle-text">New here?</span>
+        <button type="button" id="auth-toggle-btn">Create an account</button>
+      </p>
+      <p class="auth-error" id="auth-error"></p>
+    </div>
+  </section>
+
+  <div id="app-shell" class="app-shell hidden">
+    <nav class="side-nav">
+      <div class="wordmark">Nexus</div>
+      <button class="nav-item active" data-tab="listings">Listings</button>
+      <button class="nav-item" data-tab="resume">Resume</button>
+      <button class="nav-item" data-tab="matches">Find Matches</button>
+      <button class="nav-item" data-tab="shortlist">My Shortlist</button>
+      <button class="nav-item" data-tab="agent">Ask Nexus</button>
+      <button class="nav-item" data-tab="briefing">Briefing</button>
+      <button class="nav-item logout" id="logout-btn">Log out</button>
+    </nav>
+
+    <main class="content">
+
+      <section id="tab-listings" class="tab-panel">
+        <header><h2>Scraped Listings</h2><p class="subtext">Everything currently in the shared pool.</p></header>
+        <div id="listings-list" class="card-list"></div>
+      </section>
+
+      <section id="tab-resume" class="tab-panel hidden">
+        <header><h2>Your Resume</h2><p class="subtext">Upload a PDF - it's used to compute your match scores.</p></header>
+        <div class="upload-box">
+          <input type="file" id="resume-file" accept="application/pdf" />
+          <button id="resume-upload-btn">Upload</button>
+        </div>
+        <p id="resume-status" class="subtext"></p>
+      </section>
+
+      <section id="tab-matches" class="tab-panel hidden">
+        <header><h2>Find Matches</h2><p class="subtext">Ranked against your uploaded resume.</p></header>
+        <button id="run-match-btn">Run matching</button>
+        <div id="matches-list" class="card-list"></div>
+      </section>
+
+      <section id="tab-shortlist" class="tab-panel hidden">
+        <header><h2>My Shortlist</h2><p class="subtext">Saved listings, visible only to you.</p></header>
+        <div id="shortlist-list" class="card-list"></div>
+      </section>
+
+      <section id="tab-agent" class="tab-panel hidden">
+        <header><h2>Ask Nexus</h2><p class="subtext">Questions about your own saved data.</p></header>
+        <div id="chat-log" class="chat-log"></div>
+        <form id="chat-form" class="chat-form">
+          <input type="text" id="chat-input" placeholder="Which of my saved roles close this week?" autocomplete="off" />
+          <button type="submit">Send</button>
+        </form>
+      </section>
+
+      <section id="tab-briefing" class="tab-panel hidden">
+        <header><h2>Weekly Briefing</h2><p class="subtext">A spoken-style script summarizing your top 3 shortlisted matches.</p></header>
+        <button id="run-briefing-btn">Generate briefing</button>
+        <p id="briefing-status" class="subtext"></p>
+        <div id="briefing-script" class="listing-card hidden"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
