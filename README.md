@@ -1,3 +1,6 @@
+## Demo Video
+
+[▶ Watch NEXUS Demo Video](https://drive.google.com/file/d/1bztVFCq2CiQSVg3NCndm-RjkNXqJYjH0/view?t=2.811)
 # NEXUS — Career Intelligence Agent
 
 NEXUS is a job matching application that collects job listings, extracts structured information, generates embeddings, stores them in PostgreSQL with pgvector, and matches them against a user's resume.
