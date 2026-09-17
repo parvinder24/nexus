@@ -1,215 +1,362 @@
-# Nexus — Autonomous Career Intelligence Agent
+# NEXUS — Career Intelligence Agent
 
-Scrape job listings → structure them with an LLM → embed them → store in
-Postgres with pgvector → match against a resume by cosine similarity →
-let a tool-calling agent answer questions about your own data → generate
-a spoken-style briefing script via an async job/polling pattern → all
-behind real per-user auth. Built specifically on the stack and concepts
-you already know or are actively learning - nothing here needed a new
-framework you'd have to learn from scratch just to explain it.
+NEXUS is a job matching application that collects job listings, extracts structured information, generates embeddings, stores them in PostgreSQL with pgvector, and matches them against a user's resume.
 
-**Video generation itself is not implemented** - see "Briefing" below for
-exactly what is, and why the async-job architecture is the part that
-actually mattered to build correctly.
+It also includes:
+- User authentication and authorization
+- Resume upload and PDF parsing
+- Semantic job matching
+- Claude-based job extraction and match explanations
+- A tool-calling agent for querying job data
+- Saved job shortlists
+- Asynchronous briefing generation
 
-## Why this stack
+Video generation is not implemented. The current briefing feature generates a briefing script using an asynchronous job and polling flow.
 
-| Piece | Uses |
+## Tech Stack
+
+| Component | Technology |
 |---|---|
 | Backend | Node.js + Express |
-| Database | PostgreSQL + raw parameterized SQL + pgvector (the one new DB concept) |
-| Scraper | Python + `requests` + BeautifulSoup |
-| Auth | JWT + bcrypt, by hand |
-| Semantic matching | Real embeddings (Voyage AI) or an offline hashing-trick fallback, compared with pgvector's `<=>` cosine-distance operator |
-| Frontend | Plain HTML/CSS/JS + `fetch()` |
-| Agent | Claude's tool-use API, 3 named tools (`search_jobs`, `get_matches`, `get_shortlist`) |
-| Briefing | Async job + polling pattern, LLM-written script (or an offline templated one) |
+| Database | PostgreSQL + pgvector |
+| Database access | Parameterized SQL |
+| Scraper | Python + Requests + BeautifulSoup |
+| Authentication | JWT + bcrypt |
+| Embeddings | Voyage AI / offline hashing fallback |
+| Frontend | HTML + CSS + JavaScript |
+| LLM | Claude API |
+| File upload | Multer |
+| PDF parsing | pdfjs-dist |
 
-Not introduced: React, an ORM, Docker, message queues, or any other
-framework outside what you listed as known/willing-to-learn.
+## Architecture
 
-## Quickstart
-
-**1. Database** (once):
-```bash
-createdb nexus
-psql -U postgres -d nexus -f schema.sql   # also runs CREATE EXTENSION vector
+```text
+                 ┌─────────────────┐
+                 │   Web Frontend  │
+                 │   HTML/CSS/JS   │
+                 └────────┬────────┘
+                          │ HTTP
+                          ▼
+                 ┌─────────────────┐
+                 │ Node.js/Express │
+                 │     Backend     │
+                 └───────┬─────────┘
+                         │
+              ┌──────────┼───────────┐
+              ▼          ▼           ▼
+        PostgreSQL     Claude     Embeddings
+        + pgvector      API       Voyage AI
+              ▲
+              │
+        ┌─────┴─────┐
+        │  Python   │
+        │  Scraper  │
+        └───────────┘
 ```
-(Needs the `pgvector` Postgres extension installed - `apt install postgresql-16-pgvector` on Debian/Ubuntu, or `brew install pgvector` on Mac, matching your Postgres major version.)
 
-**2. Scraper:**
+## Features
+
+### 1. Job Scraping
+
+The scraper collects job listings from two structurally different sources.
+
+It supports:
+- Pagination
+- HTML parsing using BeautifulSoup
+- `source_url`
+- `scraped_at`
+- Duplicate detection
+- Request delay
+- Retry handling
+- Custom User-Agent
+- Offline fixture mode
+
+Run the scraper:
+
 ```bash
 cd scraper
-pip install -r requirements.txt
-cp .env.example .env    # or export the vars directly
 python run.py
 ```
 
-**3. Backend:**
-```bash
-cd backend
-npm install
-cp .env.example .env    # fill in DB password, JWT_SECRET, etc.
-node server.js
+By default, offline mode uses the HTML fixtures in `scraper/fixtures/`.
+
+### 2. LLM Job Extraction
+
+Raw job listings are converted into structured data using Claude.
+
+The extracted fields are:
+
+```text
+title
+company
+location
+remote_ok
+stipend
+required_skills
+experience_level
+deadline
 ```
 
-Open `http://127.0.0.1:3000`.
+The response is validated before being stored. Invalid responses can be repaired and retried.
 
-## Environment variables
+Extracted results are cached so unchanged listings do not need to be processed again.
 
-| Variable | Where | Purpose |
-|---|---|---|
-| `DB_HOST`/`PORT`/`NAME`/`USER`/`PASSWORD` | both | Postgres connection - same database for both halves |
-| `JWT_SECRET` | backend | **Override before running anywhere but your own laptop**: `openssl rand -hex 32` |
-| `ANTHROPIC_API_KEY` | both | Set: real Claude calls for extraction, match justification, agent chat, and briefing scripts. Unset: all four fall back to offline logic - **the whole app runs and is demoable with zero keys.** |
-| `VOYAGE_API_KEY` | both | Set: real semantic embeddings via Voyage AI (Anthropic's recommended embeddings partner). Unset: a deterministic offline "hashing trick" fallback (see `lib/embeddings.js`/`scraper/embed.py`) - fully testable, weaker at true semantic matching. |
-| `SCRAPE_OFFLINE_MODE` | scraper | `true` (default) reads local fixtures instead of the real internet - this project was built in a sandbox that can't reach arbitrary sites. |
+### 3. Resume Matching
 
-## Semantic matching - what changed from TF-IDF, and why
+Users can upload a PDF resume.
 
-This project used to rank listings with hand-written TF-IDF + cosine
-similarity. That's been replaced with real embeddings, per the
-assignment. The conceptual difference, worth being able to say plainly:
+The flow is:
 
-- **TF-IDF**: a document's vector depends on the *whole corpus you're
-  comparing it against* - recompute the corpus, the vectors shift. That's
-  why the old version recomputed everything on every search.
-- **An embedding**: each document gets a vector *on its own*, independent
-  of anything else. A real embedding model (Voyage AI) was trained on
-  huge amounts of text so that semantically similar text ends up with
-  similar vectors even sharing zero words - "backend infra" and
-  "distributed systems" can land close together. That's the actual reason
-  embeddings beat keyword/TF-IDF matching.
+```text
+Resume PDF
+   ↓
+Multer
+   ↓
+PDF text extraction
+   ↓
+Embedding generation
+   ↓
+PostgreSQL + pgvector
+   ↓
+Cosine similarity search
+   ↓
+Ranked job matches
+```
 
-Because each vector is independent, embeddings only need to be computed
-**once per document, ever** (cached - `embedding_cached` on `listings`),
-not recomputed per search. Matching itself becomes a single SQL query:
+Embeddings can be generated using Voyage AI.
+
+When `VOYAGE_API_KEY` is not available, the application uses a deterministic hashing-based fallback so the complete matching pipeline can still run locally.
+
+The database uses pgvector's cosine-distance operator:
 
 ```sql
 SELECT *, 1 - (embedding <=> $1) AS score
 FROM listings
 ORDER BY embedding <=> $1
-LIMIT 20
+LIMIT 20;
 ```
 
-pgvector's `<=>` operator computes cosine *distance* (0 = same direction,
-2 = opposite); `1 - distance` is cosine *similarity* - same concept you
-already knew from TF-IDF, just computed by Postgres directly on stored
-vectors instead of by a JS loop over the whole listing pool.
+### 4. Agent and Tool Calling
 
-**The offline fallback, and its honest limits**: without `VOYAGE_API_KEY`,
-`get_embedding()` hashes each word into one of 256 buckets ("the hashing
-trick" / "feature hashing" - a real, if simple, technique, not something
-invented for this project). This is enough to exercise the entire
-pgvector pipeline (storage, `<=>` queries, ranking) without needing an
-API key, and it was verified byte-for-byte identical between the Python
-and Node implementations so a Node-embedded resume and a Python-embedded
-listing are genuinely comparable. But be precise in interview about what
-it ISN'T: it only catches shared *words* (via hash buckets), not real
-semantic meaning the way a trained model does. Set `VOYAGE_API_KEY` to
-get the real thing - nothing else in the pipeline changes.
+The application includes a Claude-based agent with three tools:
 
-## The agent - 3 tools, matching the spec's names exactly
+```text
+search_jobs(query, limit)
+get_matches(limit)
+get_shortlist()
+```
 
-- `search_jobs(query, limit)` - keyword search (`ILIKE`) over the shared
-  listing pool. Not user-scoped - listings are public.
-- `get_matches(limit)` - the caller's top embedding-similarity matches.
-- `get_shortlist()` - the caller's saved listings.
+The flow is:
 
-**Authentication vs. authorization, concretely**: authentication already
-happened in `middleware/auth.js` before any of this runs - it's what
-produces a trusted `req.userId`. Authorization is enforced *inside*
-`get_matches`/`get_shortlist` themselves: neither tool's schema (what the
-model can even ask for) has a `user_id` field - `routes/agent.js` always
-passes the real `req.userId` in from outside, so there's no argument the
-model could set, however it's prompted, to read someone else's data. This
-was tested directly: a second account's `get_matches` call correctly
-reports "no resume uploaded" rather than ever seeing the first account's
-matches.
+```text
+User question
+     ↓
+Claude
+     ↓
+Tool selection
+     ↓
+Backend validation
+     ↓
+PostgreSQL query
+     ↓
+Tool result
+     ↓
+Claude response
+```
 
-Without `ANTHROPIC_API_KEY`, `lib/agent.js` routes to a tool with simple
-keyword matching instead of letting a model choose - testable without a
-key; real tool *selection* by the model needs the key.
+Private tools receive the authenticated user's ID from the backend rather than accepting a user ID from the model.
 
-## Briefing - the async job + polling pattern
+### 5. Authentication and Multi-Tenancy
 
-`POST /agent/briefing/start` inserts a `briefings` row with
-`status='processing'` and returns its id **immediately** - it does not
-wait for the script to be written. A background function
-(`generateBriefing`, not awaited by the route) then calls the LLM (or the
-offline template) and updates that row to `completed` (with the script)
-or `failed` (with an error). The frontend polls `GET
-/agent/briefing/:id` every 1.5s until the status is no longer
-`processing`.
+Authentication uses JWT and bcrypt.
 
-This is the exact shape a real video/TTS job (HeyGen, ElevenLabs) would
-need - job id → poll status → `processing`/`completed`/`failed`. Video
-generation itself isn't implemented: it needs a paid API this project has
-no way to hold a key for or test from this environment. The architecture
-is real and tested (job creation, ownership-scoped polling, and the
-completed/failed transitions all verified directly) - swapping in an
-actual video API is a change to what happens *inside*
-`generateBriefing()`, not to the job/polling shape around it.
+The authentication flow is:
 
-## Deduplication strategy
+```text
+Register/Login
+     ↓
+Password verification
+     ↓
+JWT issued
+     ↓
+JWT sent with requests
+     ↓
+Auth middleware
+     ↓
+req.userId
+```
 
-`listings.source_url` is `UNIQUE`. `scraper/db.py`'s `upsert_listing()`
-looks it up before every insert: found → update `scraped_at` (and
-`raw_text` plus reset both `extraction_cached` and `embedding_cached` if
-content actually changed); not found → insert. Verified by running
-`python run.py` twice: second run reports "0 new, 6 already existed."
-The shortlist uses the same check-before-insert pattern in
-`routes/matches.js`'s `/save` handler, rather than `ON CONFLICT` - one
-dedup pattern to explain, used in two places.
+Private data is queried using the authenticated user's ID.
 
-## Multi-tenancy - how it's enforced, and how it was tested
+This applies to:
+- Resumes
+- Matches
+- Shortlists
+- Chat messages
+- Briefing jobs
 
-Every route touching private data (`resumes`, `matches`, `chat_messages`,
-`briefings`) filters its SQL by `req.userId` from the verified JWT -
-never an id from the URL or body. `DELETE /matches/shortlist/:id` and
-`GET /agent/briefing/:id` both check ownership *and* existence together
-(`WHERE id = $1 AND user_id = $2`), so something that exists but belongs
-to someone else returns the same 404 as something that doesn't exist at
-all. Tested directly for every private table: a second account gets an
-empty shortlist, a 404 on the first user's resume, a 404 (not a deletion)
-attempting to delete the first user's match, a 404 on the first user's
-briefing job, and a correctly-scoped "no resume uploaded" from its own
-`get_matches` tool call rather than ever seeing the first user's data.
+Users cannot access another user's private data.
+
+### 6. Briefing
+
+The briefing feature uses an asynchronous job and polling pattern.
+
+```text
+POST /agent/briefing/start
+          ↓
+Create job
+status = processing
+          ↓
+Return job ID immediately
+          ↓
+Background generation
+          ↓
+completed / failed
+          ↓
+Frontend polls job status
+```
+
+The frontend polls:
+
+```text
+GET /agent/briefing/:id
+```
+
+until the job is completed or fails.
+
+The current implementation generates a briefing script. Video/TTS generation is not implemented.
+
+## Deduplication
+
+`listings.source_url` is unique.
+
+When a listing is scraped:
+- Existing `source_url` → update the listing
+- New `source_url` → insert a new listing
+
+If the listing content changes, extraction and embedding caches are reset.
+
+The same check-before-insert approach is used when saving jobs to a user's shortlist.
 
 ## Security
 
-- Passwords: bcrypt hash, never stored plain (`routes/auth.js`)
-- File upload validation: PDF mimetype check + 5MB size limit
-  (`routes/resume.js`), both tested (oversized/wrong-type files rejected
-  with a clean 400, not a crash)
-- Malformed JSON bodies: return 400, not a raw 500 or a crash - tested
-  directly (`server.js`'s error middleware)
-- All SQL is parameterized (`$1`, `$2`, ...) - never string-concatenated
+- Passwords are stored as bcrypt hashes.
+- JWT is used for authenticated requests.
+- Private database queries use the authenticated user's ID.
+- SQL queries use parameters instead of string concatenation.
+- Resume uploads are restricted to PDF files.
+- Resume uploads have a 5 MB size limit.
+- Invalid JSON requests return a controlled `400` response.
+- User-owned resources are checked before access or deletion.
 
-## Repo layout
+## Environment Variables
 
+Create a `.env` file inside `backend/` and configure the required values.
+
+| Variable | Used by | Purpose |
+|---|---|---|
+| `DB_HOST` | Backend/Scraper | PostgreSQL host |
+| `DB_PORT` | Backend/Scraper | PostgreSQL port |
+| `DB_NAME` | Backend/Scraper | Database name |
+| `DB_USER` | Backend/Scraper | PostgreSQL user |
+| `DB_PASSWORD` | Backend/Scraper | PostgreSQL password |
+| `JWT_SECRET` | Backend | JWT signing secret |
+| `ANTHROPIC_API_KEY` | Backend/Scraper | Claude API |
+| `VOYAGE_API_KEY` | Backend/Scraper | Voyage AI embeddings |
+| `SCRAPE_OFFLINE_MODE` | Scraper | Enables local fixture mode |
+
+API keys and secrets should not be committed to GitHub.
+
+## Setup
+
+### Database
+
+Install PostgreSQL and pgvector first.
+
+Create the database:
+
+```bash
+createdb nexus
 ```
-schema.sql                     the whole database schema, incl. pgvector setup
-scraper/
-  scrape.py                    two BeautifulSoup scrapers + pagination
-  db.py                        psycopg2 + pgvector, upsert-by-source_url dedup
-  extract.py                   LLM extraction, manual validation, retry/repair, offline fallback
-  embed.py                     embedding generation (Voyage API or offline hashing-trick fallback)
-  run.py                       orchestrates: scrape -> dedupe -> extract -> embed
-  fixtures/                    offline-mode HTML for the two sources
-backend/
-  server.js                    Express app, mounts everything
-  db.js                        pg connection pool + pgvector type registration
-  middleware/auth.js           JWT verification -> req.userId
-  routes/
-    auth.js, listings.js, resume.js, matches.js, agent.js, briefing.js
-  lib/
-    embeddings.js               embedding generation, mirrors scraper/embed.py exactly
-    justification.js            match explanation (LLM or offline fallback)
-    agent.js                    tool-calling chat loop + offline fallback
-    agentTools.js                search_jobs / get_matches / get_shortlist
-    pdfExtract.js                 resume PDF -> text (pdfjs-dist)
-    parseListing.js                required_skills JSON string <-> array
-    asyncHandler.js                 catches async route errors so bad input can't crash the server
-  public/                       the whole frontend (index.html, style.css, app.js) - no build step
+
+Run the schema:
+
+```bash
+psql -U postgres -d nexus -f schema.sql
 ```
+
+### Scraper
+
+```bash
+cd scraper
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python run.py
+```
+
+Configure the scraper environment variables in `scraper/.env`.
+
+### Backend
+
+```bash
+cd backend
+npm install
+node server.js
+```
+
+Configure the backend environment variables in `backend/.env` before starting the server.
+
+Open:
+
+```text
+http://127.0.0.1:3000
+```
+
+## Repository Structure
+
+```text
+nexus/
+├── schema.sql
+├── README.md
+├── scraper/
+│   ├── scrape.py
+│   ├── db.py
+│   ├── extract.py
+│   ├── embed.py
+│   ├── run.py
+│   ├── requirements.txt
+│   └── fixtures/
+│
+└── backend/
+    ├── server.js
+    ├── db.js
+    ├── middleware/
+    │   └── auth.js
+    ├── routes/
+    │   ├── auth.js
+    │   ├── listings.js
+    │   ├── resume.js
+    │   ├── matches.js
+    │   ├── agent.js
+    │   └── briefing.js
+    ├── lib/
+    │   ├── agent.js
+    │   ├── agentTools.js
+    │   ├── embeddings.js
+    │   ├── justification.js
+    │   ├── parseListing.js
+    │   ├── pdfExtract.js
+    │   └── asyncHandler.js
+    └── public/
+        ├── index.html
+        ├── style.css
+        └── app.js
+```
+
+## Current Limitations
+
+- Video generation is not implemented.
+- Real semantic embeddings require `VOYAGE_API_KEY`.
+- Claude-powered extraction, agent responses, match explanations and briefing generation require `ANTHROPIC_API_KEY`.
+- Offline modes are available for local testing without API keys.
