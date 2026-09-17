@@ -26,8 +26,7 @@ app.use("/agent/briefing", briefingRoutes);
 
 // Serves the whole frontend (public/index.html, app.js, style.css) as
 // plain static files - no separate build step, no separate process.
-app.use(express.static(path.join(__dirname, "public")));
-
+app.use(express.static(path.join(__dirname, "../public")));
 // A catch-all error handler: if any route above throws (e.g. a bad SQL
 // query, a database connection drop), Express finds this by matching the
 // 4-argument (err, req, res, next) signature and calls it instead of a
