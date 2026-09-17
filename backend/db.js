@@ -5,13 +5,20 @@
 const { Pool } = require("pg");
 const pgvector = require("pgvector/pg");
 
-const pool = new Pool({
-  host: process.env.DB_HOST || "127.0.0.1",
-  port: process.env.DB_PORT || 5432,
-  database: process.env.DB_NAME || "nexus",
-  user: process.env.DB_USER || "postgres",
-  password: process.env.DB_PASSWORD || "postgres",
-});
+const pool = new Pool(
+  process.env.DATABASE_URL
+    ? {
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+      }
+    : {
+        host: process.env.DB_HOST || "127.0.0.1",
+        port: process.env.DB_PORT || 5432,
+        database: process.env.DB_NAME || "nexus",
+        user: process.env.DB_USER || "postgres",
+        password: process.env.DB_PASSWORD || "postgres",
+      }
+);
 
 // registerTypes teaches node-postgres how to read Postgres's `vector`
 // column type back out as a plain JS array of numbers - without this, a
